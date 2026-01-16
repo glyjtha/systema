@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb_checkpoints/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data files (uncomment if you don't want to track large data files)
+# *.h5ad
+# *.h5
+# data/
+
+# Environment variables
+.env
+*.env
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.bak
+*.html
