@@ -29,7 +29,8 @@ Thumbs.db
 # Data files (uncomment if you don't want to track large data files)
 # *.h5ad
 # *.h5
-# data/
+data/
+results/
 
 # Environment variables
 .env
