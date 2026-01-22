@@ -30,26 +30,29 @@ def average_of_perturbation_centroids(adata):
     pert_means = np.array(pert_means)
     return np.mean(pert_means, axis=0)
 
-def get_perturbation_shifts(adata, reference, top_20=False):
-    pert_shifts = []
-    conditions = set(adata.obs['condition'].unique()) - set(['ctrl'])
+
+def get_perturbation_shifts(adata, reference, top_20=False, control_col="control"):
+    if control_col in adata.obs.columns:
+        adata = adata[adata.obs[control_col] == 0]
+
+    conditions = set(adata.obs["condition"].unique()) 
+    shifts = {}
+
     for condition in conditions:
         adata_condition = adata[adata.obs["condition"] == condition]
-        pert_shift = np.array(adata_condition.X.mean(axis=0))[0] - reference
-        
+        pert_shift = np.asarray(adata_condition.X.mean(axis=0)).ravel() - reference
+
         if top_20:
-            # Select top 20 DE genes
-            top20_de_idxs = adata.uns["top_non_dropout_de_20"][
+            top20_de_genes = adata.uns["top_non_dropout_de_20"][
                 adata_condition.obs["condition_name"].values[0]
             ]
-            top20_de_idxs = np.argwhere(
-                np.isin(adata.var.index, top20_de_genes)
-            ).ravel()
+            top20_de_idxs = np.argwhere(np.isin(adata.var.index, top20_de_genes)).ravel()
             pert_shift = pert_shift[top20_de_idxs]
 
-        # Compute shift
-        pert_shifts.append(pert_shift)
-    return conditions, np.array(pert_shifts)
+        shifts[condition] = pert_shift
+
+    return shifts
+
 
 def calculate_cosine_similarities(pert_shifts, reference):
     sims = cosine_similarity(pert_shifts, reference[None, :]).ravel()
@@ -73,36 +76,58 @@ def calculate_norms(pert_shifts):
     return np.linalg.norm(pert_shifts, axis=1)
 
 def compute_shift_similarities(adata, avg_pert_centroids=True, control_mean=None):
-    pert_adata = adata[adata.obs['control'] == 0]
+    # 1. split pert / control
+    pert_adata = adata[adata.obs["control"] == 0]
+
     if control_mean is None:
-        control_adata = adata[adata.obs['control'] == 1]
-        control_mean = np.array(control_adata.X.mean(axis=0))[0]
-    
+        control_adata = adata[adata.obs["control"] == 1]
+        control_mean = np.asarray(control_adata.X.mean(axis=0)).ravel()
+
+    # 2. compute pert mean
     if avg_pert_centroids:
         pert_mean = average_of_perturbation_centroids(pert_adata)
     else:
-        pert_mean = np.array(pert_adata.X.mean(axis=0))[0]
-    avg_shift = pert_mean-control_mean
-    
-    pert_shifts = {
-        'avg_ctl': get_perturbation_shifts(adata, reference=control_mean),
-        'avg_pert': get_perturbation_shifts(adata, reference=pert_mean)
+        pert_mean = np.asarray(pert_adata.X.mean(axis=0)).ravel()
+
+    avg_shift = pert_mean - control_mean
+
+    # 3. get shifts as dicts (name -> vector)
+    shifts_ctl  = get_perturbation_shifts(pert_adata, reference=control_mean)
+    shifts_pert = get_perturbation_shifts(pert_adata, reference=pert_mean)
+
+    # 4. align perturbations by key (NO sorting needed)
+    common = shifts_ctl.keys() & shifts_pert.keys()
+    perts = list(common)
+
+    v_ctl  = np.vstack([shifts_ctl[p]  for p in perts])
+    v_pert = np.vstack([shifts_pert[p] for p in perts])
+
+    # 5. compute metrics
+    sims = {
+        "avg_ctl": calculate_cosine_similarities(v_ctl, avg_shift),
+        "avg_pert": calculate_cosine_similarities(v_pert, avg_shift),
     }
 
-    pert_names = []
-    similarities = {}
-    pairwise_similarities = {}
-    norms = {}
-    for k, (perts, v) in pert_shifts.items():
-        similarities[k] = calculate_cosine_similarities(v, avg_shift)
-        pairwise_similarities[k] = calculate_pairwise_cosine_similarities(v)
-        norms[k] = calculate_norms(v)
-        pert_names.extend(perts)
-    
-    df = pd.DataFrame(similarities).melt()
-    df_pair = pd.DataFrame(pairwise_similarities).melt()
-    df_norm = pd.DataFrame(norms).melt()
-    df['pert_names'] = pert_names
-    df_norm['pert_names'] = pert_names
-    
-    return df, df_pair, df_norm, pert_names
+    norms = {
+        "avg_ctl": calculate_norms(v_ctl),
+        "avg_pert": calculate_norms(v_pert),
+    }
+
+    pairwise = {
+        "avg_ctl": calculate_pairwise_cosine_similarities(v_ctl),
+        "avg_pert": calculate_pairwise_cosine_similarities(v_pert),
+    }
+
+    # 6. build DataFrames with explicit name binding
+    df = pd.DataFrame(sims)
+    df_norm = pd.DataFrame(norms)
+
+    df["pert_names"] = perts
+    df_norm["pert_names"] = perts
+
+    df = df.melt(id_vars="pert_names", var_name="variable", value_name="value")
+    df_norm = df_norm.melt(id_vars="pert_names", var_name="variable", value_name="value")
+
+    df_pair = pd.DataFrame(pairwise).melt(var_name="variable", value_name="value")
+
+    return df, df_pair, df_norm, perts

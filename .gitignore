@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Python
 __pycache__/
 *.py[cod]
@@ -29,8 +30,7 @@ Thumbs.db
 # Data files (uncomment if you don't want to track large data files)
 # *.h5ad
 # *.h5
-data/
-results/
+# data/
 
 # Environment variables
 .env
@@ -43,3 +43,9 @@ results/
 *.tmp
 *.bak
 *.html
+=======
+*.ipynb_checkpoints*
+__pycache__*
+data
+results
+>>>>>>> aaf5b5353993b48b78543f2f93b3e18ca65df515
